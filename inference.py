@@ -5,6 +5,7 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 from model import get_model, convert_prediction, getYUVColorSpace, normalizeValue
 from tqdm import tqdm
+from itertools import combinations
 
 def load_and_preprocess_image(path, height, width):
     """
@@ -43,8 +44,8 @@ def main():
     os.makedirs(output_folder, exist_ok=True)
     
     # Define image dimensions (ensure these match your model's expected input size)
-    HEIGHT = 3552
-    WIDTH = 5312
+    HEIGHT = 2816
+    WIDTH = 4096
     
     # Load the model
     model = get_model(shape=(HEIGHT, WIDTH), batch_size=1, resize_output=True)
@@ -68,30 +69,39 @@ def main():
         y_channels.append(y)
         uv_channels.append(uv)
     
-    # Loop over all unique pairs of images (no repeats)
-    num_images = len(y_channels)
-    for i in range(num_images):
-        for j in range(i + 1, num_images):
-            # Prepare inputs for the model
-            y_low = y_channels[i]  # Image i
-            uv_low = uv_channels[i]
-            y_over = y_channels[j]  # Image j
-            uv_over = uv_channels[j]
-            
-            # Run inference
-            y_pred, uv_pred = model.predict([y_low, uv_low, y_over, uv_over])
-            
-            # Convert prediction to RGB
-            rgb_pred = convert_prediction(y_pred, uv_pred)
-            
-            # Resize the output to original image size if necessary
-            rgb_pred = cv2.resize(rgb_pred, (WIDTH, HEIGHT))
-            
-            # Save the fused image with a descriptive name
-            output_filename = f'fused_output_{i+1}_{j+1}.jpg'
-            output_path = os.path.join(output_folder, output_filename)
-            cv2.imwrite(output_path, rgb_pred)
-            print(f"Fused image saved at: {output_path}")
+    # Generate all unique pairs of indices without repetition
+    pairs = list(combinations(range(len(exposure_levels)), 2))
+    print(pairs)
     
+    # Load the weights into the model (if not already loaded)
+    # model.load_weights(model_weights_path)  # Already loaded above
+    
+    # Loop through each pair and process
+    for idx1, idx2 in pairs:
+        img1_name = os.path.splitext(exposure_levels[idx1])[0]
+        img2_name = os.path.splitext(exposure_levels[idx2])[0]
+        
+        y_low = y_channels[idx1]
+        uv_low = uv_channels[idx1]
+        y_over = y_channels[idx2]
+        uv_over = uv_channels[idx2]
+        
+        # Run inference
+        y_pred, uv_pred = model.predict([y_low, uv_low, y_over, uv_over])
+        
+        # Convert prediction to RGB
+        rgb_pred = convert_prediction(y_pred, uv_pred)
+        
+        # Resize the output to original image size if necessary
+        rgb_pred = cv2.resize(rgb_pred, (WIDTH, HEIGHT))
+        
+        # Create a descriptive output filename
+        output_filename = f'fused_{img1_name}_{img2_name}.jpg'
+        output_path = os.path.join(output_folder, output_filename)
+        
+        # Save the fused image
+        cv2.imwrite(output_path, rgb_pred)
+        print(f"Fused image saved at: {output_path}")
+
 if __name__ == '__main__':
     main()
