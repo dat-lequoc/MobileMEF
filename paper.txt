@@ -1,0 +1,1175 @@
+1
+
+MobileMEF: Fast and Efficient Method for
+Real-Time Mobile Multi-Exposure Fusion
+
+arXiv:2408.07932v2 [eess.IV] 1 Oct 2024
+
+Lucas Nedel Kirsten, Zhicheng Fu, Nikhil Ambha Madhusudhana
+
+Abstract—Recent advances in camera design and imaging
+technology have enabled the capture of high-quality images
+using smartphones. However, due to the limited dynamic range
+of digital cameras, the quality of photographs captured in
+environments with highly imbalanced lighting often results in
+poor-quality images. To address this issue, most devices capture
+multi-exposure frames and then use some multi-exposure fusion
+method to merge those frames into a final fused image. Nevertheless, most traditional and current deep learning approaches
+are unsuitable for real-time applications on mobile devices due
+to their heavy computational and memory requirements. We
+propose a new method for multi-exposure fusion based on
+an encoder-decoder deep learning architecture with efficient
+building blocks tailored for mobile devices. This efficient design
+makes our model capable of processing 4K resolution images
+in less than 2 seconds on mid-range smartphones. Our method
+outperforms state-of-the-art techniques regarding full-reference
+quality measures and computational efficiency (runtime and
+memory usage), making it ideal for real-time applications on
+hardware-constrained devices. Our code is available at: https:
+//github.com/LucasKirsten/MobileMEF.
+Index Terms—Multi-exposure fusion, image fusion, efficient
+methods
+
+I. I NTRODUCTION
+Photographs captured in environments with highly imbalanced lighting often result in poor-quality images due to
+underexposed and overexposed regions. This issue arises from
+the limited dynamic range of digital cameras, which is significantly lower than in real-world scenes [1]. High dynamic range
+(HDR) imaging techniques have been developed to address
+this limitation, with multi-exposure image fusion (MEF) being
+a prominent solution [2], [3]. MEF methods merge multiple
+images captured at different exposure levels to produce a
+single image that intends to retain the scene details and
+color fidelity [4]. Despite the advancements, many existing
+MEF methods rely on hand-crafted features or transformations,
+leading to robustness issues under varying conditions [5].
+Traditional MEF methods, such as those based on Laplacian pyramids [4], [1], are computationally intensive due
+to the multiple operations required for generating pyramid
+sub-images [5]. This computational overhead becomes particularly problematic for hardware-constrained applications
+like smartphones, especially when processing high-resolution
+4K images. Single-scale fusion methods [6] have been proposed to alleviate the computational burden, but they often
+produce lower-quality images due to noticeable seams and
+Lucas N. Kirsten (corresponding author, email: lucask@motorola.com) is
+with Motorola Mobility Comércio de Produtos Eletrônicos Ltda, Jaguariúna,
+SP 13918-900 BR. Zhicheng Fu and Nikhil Ambha Madhusudhana are with
+Lenovo Research.
+
+gray differences [1], [2]. Additionally, while deep learningbased approaches have shown promise in improving MEF [3],
+they often do not consider real-world deployment constraints,
+resulting in a trade-off between speed and quality that limits
+their application on mobile platforms [7], [8], [9], [10].
+To address these challenges, we propose a novel MEF
+method based on an Encoder-Decoder deep learning architecture designed to optimize mobile device performance, named
+MobileMEF. MobileMEF draws inspiration from recent advancements in deep learning [11], [12] but introduces several
+key modifications to enhance efficiency and effectiveness for
+MEF tasks. As illustrated in Fig. 1, our method achieves superior image quality results with the lowest or near-lowest required operations compared to existing state-of-the-art (SOTA)
+methods. This balance of high-quality image output and low
+computational demand makes our method highly suitable for
+deployment on mobile devices, enabling efficient processing
+of 4K resolution images without compromising performance.
+Our main contributions to the field are:
+• We present MobileMEF, an optimized model architecture designed for hardware-constrained MEF applications. MobileMEF outperforms state-of-the-art techniques
+regarding full-reference quality measures and computational efficiency (runtime and memory usage), being
+capable of processing 4k resolution images in less than
+2 seconds on mid-range smartphones;
+• We propose a new bypass module based on SingleScale Fusion [6] with YUV color space images [1] that
+forwards an estimate of the fused image channels from
+the input frames to the model output predictions;
+• We propose a new Gradient loss [13] formulation based
+on cropping, capable of capturing fine details and overall
+image context of the predicted and ground-truth images.
+II. R ELATED W ORK
+Traditional MEF methods can be divided into Multi-Scale
+and Single-Scale based methods [5], [2]. Multi-Scale methods,
+like the Mertens [4] algorithm, use a sequence of Laplacian
+pyramids to decompose input frames into sub-images, alleviating exposure differences and smoothing local transitions
+by computing three quality measures related to saturation,
+contrast, and exposure levels. The Fast YUV [1] method
+improves on this by using the YUV color space and computing
+pyramids only on the Y channel, reducing computational
+efforts. In contrast, Single-Scale methods, such as the one
+proposed by Ancuti et al. [6], approximate the operations in
+the pyramid step of the Mertens algorithm to a single step,
+reducing computational resource requirements.
+
+2
+
+A. Input pipeline
+200x less MACs
+
+MobileMEF
+
+Fig. 1. Comparison of computational cost and performance of SOTA
+MEF methods: HoLoCo [8], IFCNN [7], MEFLUT [14], SAMT-MEF [10],
+TransMEF [9]. MobileMEF can process 4k images in 1.82 seconds on a midrange mobile device using GPU.
+
+As in many other fields, methods based on deep learning have been proposed to solve the MEF problem [3].
+For example, the IFCNN [7] model presented a general
+MEF framework based on convolutional neural networks.
+TransMEF [9] is a transformer-based model that uses selfsupervised multi-task learning based on an encoder-decoder
+architecture. HoLoCo [8] proposes a method based on local feature constraints built upon contrastive learning. The
+MEFLUT [14] model learns to encode the fusion weights as
+1D lookup tables to achieve a highly efficient method. More
+recently, SAMT-MEF [10] has presented a mean teacher-based
+semi-supervised learning framework tailored for MEF.
+In this work, we propose MobileMEF, an end-to-end
+encoder-decoder model designed for fast and efficient computation of MEF. Our work is built on top recent advances
+in deep-learning and MEF efficient designs, such as the
+LPIENet [11] architecture, the convolutional blocks of ConvNeXt [12], the Fast YUV [1] and the Single-Scale MEF
+method proposed by Ancuti et al. [6]. Furthermore, we extend
+the formulation of the widely used Gradient loss [13] to
+capture fine details and overall image context to improve the
+fused image quality.
+III. T HE P ROPOSED M ETHOD
+We propose MobileMEF, a new method for MEF based on
+an Encoder-Decoder deep learning architecture with efficient
+building blocks designed to work on mobile phones, presented
+in Fig. 2. The overall model architecture is inspired by the
+recent success of the LPIENet [11] image enhancer model,
+but we redesigned some of their main components to work for
+MEF and to improve performance in mobile devices with 4K
+resolution images. Specifically, we redesign the model’s input
+pipeline to work with multiple input images in the YUV color
+space; we replace their base convolutional blocks to use one
+based on ConvNeXt [12]; added Squeeze-and-Excitation [15]
+attention block to the Encoder and Decoder model blocks; and
+added a Single-Scale Fusion (SSF) bypass module based on
+[6] and [1] that intends to forward fused information of the
+inputs to the model’s output. We proceed to provide details
+regarding our method.
+
+We first concatenate the inputs’ channels of the multiple
+input frames in the form that our model will receive inputs
+with shape (H,W ,K × C), where H is the height, W the
+width, C the image channels, and K the number of input
+frames. However, note that this simple scheme can cause
+computational overhead since the model requires to operate in
+K times more channels in its first layers. To address this issue,
+we follow the proposal of other works [14], [7] and convert
+the RGB input frames to the YUV color space. Converting
+the inputs to YUV allows us to work with smaller inputs
+in the UV channels since they are only related to color [1],
+and recent works have demonstrated that similar approaches
+yield superior performance with reduced computational costs
+(runtime and memory) [5]. Hence, our input data pipeline
+is divided into two parts: one related to the Y channels
+of the input frames with shape (H,W ,K); and the other
+related to the UV channels with shape (κH,κW ,K×2), where
+0 < κ < 1 is a down-sample ratio value. Moreover, note that
+this scheme requires using two Encoder-Decoder models with
+SSF modules: one for the Y inputs, and the other for the UV,
+as we proceed to explain.
+B. Network architecture
+The overall proposed network architecture for MobileMEF
+is presented in Fig. 2, and is based on the success of recent
+works for efficient model design for mobile applications [11],
+[12], [16]. For K input frames with shape (H,W ,C), where
+H is the height, W the width, and C the image channels, the
+forward process is designed as:
+1) The input frames are converted to the YUV color space
+and split in the channel axis. The inputs related to the
+UV channels are downsampled by a ratio κ. The Y
+and resized UV inputs are stacked in the channel axis,
+providing the two inputs with shape (H,W ,K) for the
+Y channels, and (κH,κW ,K ×2) for the UV channels;
+2) Both inputs are downsampled by a ratio Γ;
+3) Each downsampled input is forwarded by a set of N
+encoder and decoder blocks;
+4) The output from the decoder is then fed to a sequence
+composed of one Inverted residual (InvBlock) [16] and
+one Spatial Attention (SAT) module;
+5) The downsampled inputs are processed in parallel by the
+SSF module that merges the K input frames;
+6) The predicted fused image from the model’s output is
+added to the merged image from the SSF module;
+7) The summed image is then upsampled by the ratio Γ to
+produce the fused channel (Y or UV).
+We advocate that using a small downsampling ratio Γ ≤ 2
+to the input frames has negligible effects on the result fused
+image. However, it significantly reduces computational efforts
+since inputting high-resolution images to the first layers of the
+model can cause severe computation overheads. We proceed to
+provide details regarding the blocks of the proposed network
+architecture following the name convention in Fig. 2.
+ConvBlock. We based our Convolutional Block on the ConvNeXt [12], as recent works have demonstrated its superiority
+
+3
+
+BaseBlock
+
+(H,W,K✕C)
+
+DWCONV 3x3
+
+UPSAMPLE
+
+Decoder
+
+SAT
+
+Encoder
+
+InvBlock
+
+DOWNSAMPLE
+
+Skip connections
+
+CONV 1x1
+ConvBlock
+
+SQUEEZE
+EXCITATION
+
+ConvBlock
+
+(H,W,C)
+
+SSF
+
+DECONV 3x3
+
+IRA
+
+BaseBlock
+
+DWCONV 7x7
+CONV 1x1
+
+DWCONV 3x3
+
+IRA
+
+BaseBlock
+
+CONV 1x1
+
+MAX POOLING
+
+DWCONV 3x3
+
+ConvBlock
+
+LAYERNORM
+CAT
+
+CONV 1x1
+GeLU
+CONV 1x1
+
+Encoder Block
+
+Decoder Block
+
+Fig. 2. Overall proposed MobileMEF model architecture. The encoder-decoder model receives an input with C channels and K frames and returns the fused
+frames. The SSF module merges the K input frames and adds it to the model’s output.
+
+on feature extraction [17] due to its similarity with the recent
+Visual Transformers [18], but with a more efficient design. Our
+convolutional blocks are composed of: a Depthwise Convolutional layer with 7×7 kernel size, a Layer Normalization [19],
+a Pointwise Convolution that doubles the number of input
+features, a GeLU [20] activation layer, and finally a Pointwise
+convolution that restores the same number of input features
+as the inputs. The output of the final Pointwise convolution is
+then added to the input of the ConvBlock.
+BaseBlock. Similarly with [11], our Base Blocks are composed of a first 3×3 Depthwise Convolution layer, a Pointwise
+Convolution that doubles the number of input features, and a
+sequence of two convolutional blocks. However, we include a
+Squeeze and Excitation [15] module that is intended to add a
+channel attention mechanism related to the inputs. Specifically
+related to the MEF problem, our experiments demonstrated
+that the Squeeze and Excitation module can significantly boost
+the results with neglectable computation overhead. We assign
+this performance boost to the fact that the input frames are
+stacked in the channel axis, where the Squeeze and Excitation
+module operates.
+Encoder Block. The Encoder Block compresses the inputs’
+spatial dimension while expanding its feature size [21]. First,
+a 3×3 Depthwise Convolution layer followed by a Pointwise
+Convolution that doubles the number of input features is used.
+The output of these convolutions is stored to be used for the
+skip connections. Next, a Max Pooling 2D layer is employed
+to reduce the spatial size by a ratio of 2, and is followed
+by a BaseBlock and an Inverted Residual Attention (IRA)
+module [11]. The IRA module was proposed in [11] to add
+both spatial and channel attention to each Encoder/Decoder
+block, and is illustrated in Fig. 3.
+Decoder Block. The Decoder Block expands the spatial
+dimension of the input features while reducing its feature size
+
+Fig. 3. IRA Block as proposed in LPIENet [11].
+
+to retain only the most important features extracted during
+the encoder step [21]. First, we employ a 3 × 3 Depthwise
+Convolution layer followed by a Pointwise Convolution that
+halves the number of input features. Next, we use a BaseBlock
+and an IRA module [11]. Finally, a Transposed Convolution
+with the same number of input and output features is used to
+upsample the features to be concatenated with the respective
+encoder layer output (i.e., the skip connection).
+InvBlock. The Inverted residual (InvBlock) [16] module
+adds residual information through an efficient inverted structure, and is commonly used in many mobile applications.
+It comprises a branch of Pointwise convolution, Depthwise
+convolution, another Pointwise convolution (all with the same
+number of output features); and another branch composed of
+a Pointwise convolution with a ReLU activation. The output
+of both branches is then added to compose the final InvBlock
+output.
+SAT. The Spatial Attention module is designed to enhance
+and suppress certain spatial features of the inputs through a
+
+4
+
+progressive receptive field augmentation [11]. It is composed
+of three Convolution layers followed by ReLU (the first two)
+and Sigmoid activation (the last one). The convolutions use
+an increasing kernel size scheme of 7 × 7, 5 × 5, and 3 × 3,
+respectively. All convolutions have the same number of output
+features, that is the number of expected predicted output
+channels (1 for the Y channel, and 2 for the UV channels). The
+last output tensor (the one related to the Sigmoid activation)
+is then dot multiplied by the input tensor of the SAT module.
+
+experiments, we noted that a standard resizing with bi-linear
+interpolation could achieve similar or superior results.
+For YUV images, the UV channels relate solely to color,
+so using some weighted average method such as Eq. 1 for
+fusing these channels would shift all colors to gray [1]. To
+address this, we use Eq. 1 to compute the fusion solely in the
+Y channel, whereas for the UV channels we use [1] proposal:
+FU = max IU
+
+(2)
+
+FV = max IV ,
+
+(3)
+
+K
+
+and
+C. SSF module
+
+K
+
+Following the LPIENet [11] network architecture, and as in
+many other image enhancement works [22], we also add a skip
+connection that sums the input image with the network output.
+This simple strategy is usually used to improve model convergence and performance since it allows the network to focus
+only on correcting the input image, reducing the necessity of
+also retaining features for reconstructing it during the EncoderDecoder step [22]. However, for the MEF problem, the inputs
+and outputs have different numbers of channels, since the main
+objective is to fuse the input frames into a unique output.
+One could argue that a simple reduction function, such as the
+mean or median, could be used to match the network output
+channels. Nevertheless, in [5] the authors have demonstrated
+that such stack techniques tend to compromise the final image
+quality. Moreover, they also show that Single-Scale Fusion
+(SSF) methods (e.g., [6]) are capable of producing similar
+results to Multi-Scale ones (e.g., [4], [1]), with the advantage
+of reducing computational efforts.
+We propose to use a learnable version of the SSF method
+named “SSF-YUV” described in [5] for the skip input path
+of our model in order to provide a “closer” estimate of the
+fused input to the model prediction. We refer to it as the SSF
+module and proceed to detail it. This module is based on the
+works of Ancuti et al. [6], which describes a Single-Scale
+Fusion method based on approximations on the Mertens [4]
+algorithm; and the Fast YUV [1], which describes an efficient
+MEF method designed to fuse images in the YUV color space.
+According to [6], a fused image channel (e.g., for RGB
+image, the red, green, or blue channel) can be obtained with:
+F=
+
+K
+X
+
+ωB ⊛ W + α · |P1 (Ii ) ⊙ P1 (W)|,
+
+(1)
+
+i=1
+
+where K is the number of input frames, ωB is a blur kernel,
+W ∈ R2 is the normalized weight maps1 of the fusion method,
+α is a scalar constant set empirically, Ii ∈ R2 is the ith input frame channel, and P1 (I) = I − UP(DOWN(I)) is a
+single step Laplacian Pyramid function, where UP and DOWN
+are up-sampling and down-sampling operations, respectively
+that halve the spatial dimensions. The definition of these
+up- and down-sampling operations is usually accompanied by
+convolving the inputs with Gaussian kernels. However, in our
+1 Note that the term “weights” here have a different meaning than the one
+used for the weights of a deep learning model. In traditional MEF methods
+(such as [6], [1], [4]), the “weight maps” are the output of hand-coded
+functions applied to the input frames to extract some visual information of it,
+such as contrast, saturation, and exposure.
+
+where IU and IV are the U and V channels of the input
+frames, respectively. This formulation reasons that, when
+imaging, for a reasonably exposed area, the color should be
+bright and so its color components should be close to its
+maximum value.
+Based on the [1] work, we also use two weight maps related
+to computing the contrast and exposure of the YUV input
+frames. We compute the contrast weight as:
+WC = ωC ⊛ IY ,
+
+(4)
+
+where ωC is the Laplacian kernel, and IY is the Y channel of
+the input frames. And for the exposure weight:
+WE = |IU | ⊙ |IV |.
+
+(5)
+
+The final normalized weight maps is computed as:
+WC ⊙ WE
+W = PK
+.
+i=1 WC ⊙ WE
+
+(6)
+
+D. Loss function
+We define the loss function to train our complete deeplearning model based on a weighted sum of L1 (mean absolute
+error) and Gradient loss [13]. The final loss function is:
+L = L1 + λ · LGrad ,
+
+(7)
+
+where LGrad is the Gradient loss, and λ is a scalar constant
+used to scale the loss.
+For the Gradient loss, the features extracted from a large
+pre-trained classification model (e.g., VGG16 or VGG19 [23])
+are used to compute the L1 distance between the ground-truth
+and predicted features, to preserve image structure and generate perceptual-pleasant details. These classification models
+usually are trained with small inputs (e.g., 224×244). However,
+our model is intended to work with 4K high-resolution images,
+and feeding such large images would harm the classifier’s
+capabilities of extracting features. One solution would be to
+resize the ground truth and predicted images to match the
+classifier input size, but it can cause the loss of fine details.
+Current works [11], [8] usually rely on cropping the highresolution inputs to fit a “more suitable” image size (e.g.,
+512 × 512) to reduce the loss of fine details to the Gradient
+loss. Nevertheless, this is also not ideal, because it may lose
+some contextual information of the whole image.
+We propose a simple method to improve the Gradient
+loss performance, based on resizing and cropping the input
+
+5
+
+and ground-truth images to preserve contextual information
+and finer details. Given the predicted and ground-truth images {I(x, y), IGT (x, y)} ∈ RH×W respectively (omitted the
+channel axis for simplicity), and a feature extractor classifier
+Ψ trained with input size h×w, we extract the crops from the
+images in the form:
+(
+I(x + ∆x, y + ∆y) if 0 ≤ x ≤ w, 0 ≤ y ≤ h
+,
+δ(I) =
+0
+otherwise
+(8)
+where ∆x and ∆y are used to define the starting point for the
+crop region. The final Gradient loss is then computed using
+the following composition:
+r
+LGrad = L1 (Ψ(I r ), Ψ(IGT
+))+
+M
+1 X
+·
+L1 (Ψ(δi (I)), Ψ(δi (IGT ))), (9)
+M i=1
+r
+where {I r , IGT
+} ∈ Rh×w are the resized input and groundtruth images respectively, and M is the number of extracted
+crops. We argue that this definition of the Gradient loss can
+extract fine details and preserve image context, as we proceed
+to demonstrate in our results.
+
+IV. E XPERIMENTAL SETUP
+A. Dataset
+We employ the widely used open-source benchmark MEF
+dataset SICE [24] to train and evaluate our proposed method. It
+is composed of both indoor and outdoor scenes, captured with
+seven types of consumer-grade cameras. We used the most
+common split of SICE composed of 360 scenes, of which 302
+are used for training and 58 for testing. The resolution of most
+images is between 3000×2000 and 6000×4000 pixels. Each
+scene comprises at least three images of different Exposure
+Values (EV) with values -1, 0, and +1, plus one ground-truth
+image.
+B. Implementation details
+We employ a reduction factor of κ = 1/4 on the UV
+channels (recall Sec. III-A), and of Γ = 2 for the input frames
+(both Y and UV, recall Sec. III-B). In all resize operations we
+use the bi-linear interpolation. We use N = 5 encoder/decoder
+blocks for the Y inputs, and N = 3 for the UV inputs, since
+they are 4 times smaller than the Y ones. The number of
+features for the first Pointwise convolution of the encoder
+branch is set to 4 for the Y inputs, and 8 for the UV inputs.
+This value is doubled for each new encoder block and halved
+on the respective decoder one (recall Sec. III-B).
+For the SSF module (Eq. 1), we use α = 0.2 as in [6], and
+ωB ∈ R5×5 kernel is initialized with all its values equal 1/25.
+For the contrast weight (Eq. 4), ωC ∈ R3×3 is initialized with
+values:
+
+
+0 1 0
+ωC = 1 −4 1 ,
+(10)
+0 1 0
+
+which is the Laplacian kernel. Both ωB and ωC are treated
+as learnable parameters during the model training and are
+implemented using Depthwise convolutions.
+For the loss function, we set λ = 1 since we use L1
+for computing both LGrad (Eq. 9) and the complete L loss
+(Eq. 7). For the proposed crop-like LGrad (Eq. 9), we extract
+M = 5 crops of the input and ground truth images using
+Eq. 8, with (∆x, ∆y) = {(0, 0), (W − w, 0), (0, H − h),
+(W − w, H − h), ( W 2−w , H−h
+2 )}, which correspond to the
+top-left, top-right, bottom-left, bottom-right and center regions
+of the images, respectively. The VGG19 [23] is used as the feature extractor Ψ (Eq. 9), with input size (h, w) = (448, 448).
+The model was implemented in Python 3 programming
+language [25] and using the Tensorflow 2 [26] and Keras 2 [27]
+frameworks. We trained the model using the Adam optimizer [28] with β1 = 0.9, β2 = 0.999, and a fixed learning
+rate of 10−4 . We use full-sized (i.e., no crops) images and
+resize them to 4096 × 2816 pixels, to allow the network to
+learn high-resolution features, and use batch size equals 1.
+We selected two different input pipelines regarding the choice
+of K = 2 frames from each scene to test the robustness of our
+model: (i) using the EVs -1 and +1 frames, as in [14], [7]; (ii)
+using the most under and over exposed frames for each scene
+(the EV value changes depending on the scene), as in [8], [9],
+[10]. We report results for 300 training epochs, but we also
+show in Sec. V-B that it can be diminished to 100 without
+major performance loss. The model was trained in a NVIDIA
+A100-SXM4 GPU with 40GB of memory, AMD EPYC 7J13
+64-Core Processor CPU with 30 processing units, and
+200GB of RAM.
+C. Evaluation protocol
+We evaluated our proposed method with 11 quantitative
+image quality metrics, and with runtime and memory usage measurements during model inference. Our results were
+compared with three traditional MEF methods2 : Mertens [4],
+Fast YUV [1], and Ancuti et al. [6]; and five SOTA methods3
+based on deep learning, namely: HoLoCo [8], MEFLUT [14],
+TransMEF [9], IFCNN [7], and SAMT-MEF [10]. We proceed
+to provide details regarding our evaluation methodology.
+Quantitative evaluation. For evaluating the quality of
+the fused images, we employed nine full-reference metrics:
+Structural Similarity Index (SSIM) [29], Multi-scale Structural
+Similarity Index (MS-SSIM) [29], Peak signal-to-noise ratio
+(PSNR), ∆E CIEDE2000 (∆E 2000) [30], Visual Information Fidelity (VIFp) [31], Feature Similarity Index Measure (FSIM) [32], Spectral Residual based Similarity (SRSIM) [33], Visual Saliency-induced Index (VSI) [34], and
+Mean Deviation Similarity Index (MDSI) [35]; and two noreference ones: MEF-SSIM [36] and Qc [37].
+To ensure a fair comparison, as the SICE dataset includes
+images of varying resolutions (see Sec. IV-A), the predicted
+images from the tested MEF methods are resized to match the
+2 We
+used the implementations available at: https://github.com/
+LucasKirsten/Benchmark-Image-Fusion.
+3 We used the implementations provided in their official Github repositories.
+
+6
+
+resolution of their ground-truth counterparts before computing
+the metrics.
+Computational resources evaluation. In order to establish a fair benchmark among our method and competitors,
+we converted all models to the ONNX 13 [38] format,
+which is a flexible and popular format for distributing deep
+learning models for inference purposes. Then, we used the
+converted models for inference with dummy inputs and measured runtime and memory usage on both CPU and GPU
+processors. The reported measurements are the average of
+20 runs for each evaluation. We tested the models in a
+notebook with Intel(R) Xeon(R) W-11955M 2.60Hz
+CPU with 64GB of RAM and x64-based processor, and
+NVIDIA RTX A3000 Laptop GPU with 6GB of memory.
+The models were evaluated with input resolution of 5122 ,
+7682 , 10242 , 12802 , 15362 , 17922 , 20482 , and 40962 . However, some methods could not be evaluated on high resolutions
+due to hardware limitations (i.e., out of memory error).
+For the mobile evaluation, we accessed the runtime and
+memory usage of MobileMEF using a smartphone with 4
+GB of RAM, four 2.4 GHz Kryo 265 Gold and four
+1.9 GHz Kryo 265 Silver processors, Snapdragon
+680 4G Qualcomm SM6225 chipset, and Adreno 610
+GPU. Our trained model was converted to the TensorFlow Lite
+format4 to run on Android devices. The measurements were
+performed with the TensorFlow Lite benchmark tool5 with 10
+simulated runs using GPU, with a fixed image resolution of
+4096×4096 pixels.
+
+Regarding our visual results presented in Figs. 4 and 5,
+our method demonstrates noticeable improvements in visual
+quality. It consistently delivers images with better contrast
+and detail preservation, closely resembling the ground truth,
+especially when compared to alternatives like HoLoCo [8],
+MEFLUT [14], and IFCNN [7]. This superior performance is
+evident in the enhanced clarity and naturalness of the fused
+images, which better handle the challenges of diverse exposure
+settings.
+The results for evaluating the computational resources are
+presented in Figs. 6 and 7 regarding runtime and memory,
+respectively. Our method achieves the lowest or near-lowest
+execution times across all resolutions and on both devices
+evaluation (CPU and GPU), even when compared to the
+MEFLUT [14] method that requires fewer operations (recall
+Tab. I). Specifically, our method is on average 1.67× faster on
+CPU and 1.45× faster on GPU compared to the fastest one on
+each resolution. Regarding the memory usage evaluation, our
+method consistently outperforms all others, with the lowest
+memory consumption across all tested image resolutions.
+Specifically, our method is on average 1.41× more memory
+efficient compared to the most efficient one on each resolution.
+This makes our method effective in terms of the quality
+of fused images and highly efficient and scalable, ideal for
+real-time applications and high-resolution image processing,
+especially for applications with limited computational resources, such as smartphones. Hence, in comparison to other
+SOTA methods, our method provides a superior balance of
+computational efficiency and high-quality performance.
+
+V. R ESULTS AND DISCUSSIONS
+A. Comparison with other works
+
+B. Ablation studies
+
+We present the results for our quantitative evaluation
+in Tab. I, supported by visual results in Figs. 4 and 5.
+MobileMEF achieves SOTA results for most of the fullreference metrics: 6/9 using EVs -1 and +1 as input frames
+(second best in MS-SSIM and VSI), and 7/9 using the most
+under and over-exposed frames as input (second best in
+VIFp), suppressing the performance of methods that require
+200 to 1700 times more operations (MACs column). These
+results hint the effectiveness of our method in producing highquality fused images with minimal computational resources,
+suggesting that it is well-suited for applications requiring highquality images without excessive computational costs, such as
+in smartphone cameras.
+Although our method does not achieve the highest MEFSSIM and Qc values, it still performs competitively. Nevertheless, it’s important to note that some SOTA methods
+incorporate one (or more) of the tested metrics in their
+loss function, potentially giving them an advantage in these
+metrics. Moreover, no-reference metrics may hinder some
+intricacies over the predicted images compared to their groundtruth counterparts, such as penalizing regions that require the
+model to interpolate some content due to a lack of information
+in the input frames.
+
+In order to assess the effectiveness of our proposals, we
+conduct ablations studies related to (i) the neural network
+architecture (Sec. III-B and III-C), (ii) the crop-like Gradient
+loss proposal (Sec. III-D), and (iii) the number of training
+epochs. For these studies, we trained our model with half input
+size resolution and using EV -1 and +1 as inputs, reduced the
+train epochs to 100 for studies (i) and (ii), and evaluated the
+model performance using only full-reference metrics, which
+we understand to be more reliable measures of performance
+when the ground-truth images are available. Specifically, we
+used SSIM, MS-SSIM, and PSNR, which are the most broadly
+used metrics for image quality assessment.
+Network Architecture. We present the results for the neural
+network architecture ablation in Tab. II, where the “Baseline”
+method is the LPIENet [11] architecture with modified inputs
+to agree with the MEF pipeline (i.e., allow multiple YUV
+frame inputs); the “Filter Reduction (F.R.)” column refers to
+diminishing the number of filters proposed in the original
+LPIENet model (they use 16 as the initial filter size for all
+channels, whereas we used 4 and 8 for the Y, and UV inputs, respectively); the “Network Optimization (N.O.)” column
+refers to the optimizations presented in Section III-B; and
+the “SSF-Module” column refers to the usage of this new
+module as explained in Section III-C. The “Memory” and
+“Runtime” were computed using a mobile device, as described
+in Section IV-C.
+
+4 Available
+5 Available
+
+at: https://www.tensorflow.org/lite/
+at: https://www.tensorflow.org/lite/performance/measurement
+
+7
+
+TABLE I
+Q UANTITATIVE RESULTS COMPARING M OBILE MEF TO T RADITIONAL AND DEEP - LEARNING BASED SOTA METHODS USING TWO DIFFERENT EV
+FRAMES INPUT PIPELINES . T HE MAC S (G) COLUMN WAS COMPUTED USING AN IMAGE RESOLUTION OF 12802 . B OLD VALUES MARK THE BEST
+RESULTS , AND UNDERLINE MARK THE SECOND BEST ONES .
+
+Most under and over
+exposed frames
+
+EVs -1 and 1
+
+Method
+Inputs
+MACs (G) ↓ SSIM ↑
+MS-SSIM ↑
+Mertens
+0.14
+0.7327
+0.8679
+Fast YUV
+0.08
+0.7299
+0.8611
+Ancuti et al.
+0.25
+0.7543
+0.8834
+1004.41
+0.7973
+0.8972
+HoLoCo
+MEFLUT
+0.18
+0.6651
+0.8323
+†
+TransMEF
+569.47
+0.7461
+0.8807
+IFCNN
+213.18
+0.7794
+0.8697
+SAMT-MEF
+1552.58
+0.7489†
+0.8769
+0.88
+0.8270
+0.8937
+MobileMEF
+Mertens
+0.14
+0.7838
+0.8423
+Fast YUV
+0.08
+0.7732
+0.8213
+Ancuti et al.
+0.25
+0.7795
+0.8197
+HoLoCo
+1004.41
+0.7951
+0.8594
+0.18
+0.5454
+0.7264
+MEFLUT
+†
+TransMEF
+569.47
+0.8156
+0.8357
+IFCNN
+213.18
+0.7646
+0.8640
+SAMT-MEF
+1552.58
+0.8024†
+0.8596
+MobileMEF
+0.88
+0.7977
+0.8799
+† The metric is also used in the method loss function formulation.
+
+PSNR ↑
+16.7615
+16.4935
+17.5773
+19.9179
+14.5945
+17.3411
+19.0874†
+18.4657†
+20.6532
+18.6549
+17.9362
+18.0990
+19.3602†
+10.3333
+18.6669
+18.9990†
+19.7875†
+20.7976
+
+MEF-SSIM ↑
+0.9358
+0.9060
+0.9607
+0.8890
+0.9490†
+0.9757
+0.9440
+0.9103
+0.8965
+0.9030
+0.7865
+0.9048
+0.8875†
+0.9272†
+0.9668
+0.9652
+0.9076
+0.8957
+
+Qc ↑
+0.8619
+0.8549
+0.8927
+0.8135
+0.8456
+0.8872
+0.7885
+0.8458
+0.8010
+0.6602
+0.6408
+0.6696
+0.6551
+0.4878
+0.6497
+0.6897
+0.6389
+0.6325
+
+∆E 2000 ↓
+13.4556
+14.8283
+12.8665
+9.8006
+16.6180
+12.8441
+9.6578
+12.0584
+9.3952
+10.5726
+14.1170
+10.9890
+9.4392
+25.9636
+9.8191
+10.3337
+8.9166
+8.8717
+
+VIFp ↑
+0.3955
+0.3839
+0.4149
+0.3801
+0.3256
+0.4118
+0.4672
+0.3339
+0.3676
+0.3064
+0.2930
+0.2838
+0.2880
+0.1703
+0.2493
+0.4014
+0.2872
+0.3306
+
+F-SIM ↑
+0.8982
+0.8926
+0.9236
+0.9372
+0.8859
+0.9224
+0.9163
+0.9249
+0.9376
+0.8781
+0.8601
+0.8489
+0.9180
+0.7833
+0.8778
+0.9075
+0.9026
+0.9320
+
+SR-SIM ↑
+0.9332
+0.9314
+0.9460
+0.9645
+0.9137
+0.9447
+0.9468
+0.9511
+0.9647
+0.9158
+0.9108
+0.8858
+0.9516
+0.8312
+0.9134
+0.9296
+0.9343
+0.9622
+
+VSI ↑
+0.9592
+0.9552
+0.9682
+0.9784
+0.9546
+0.9692
+0.9719
+0.9712
+0.9778
+0.9561
+0.9458
+0.9486
+0.9744
+0.9244
+0.9584
+0.9683
+0.9698
+0.9771
+
+MDSI ↓
+0.3646
+0.3756
+0.3403
+0.2997
+0.3842
+0.3370
+0.3112
+0.3215
+0.2990
+0.3738
+0.3919
+0.4004
+0.3190
+0.4365
+0.3731
+0.3263
+0.3412
+0.3036
+
+TABLE II
+A BLATION STUDIES REGARDING THE PROPOSED NETWORK ARCHITECTURE : F ILTER R EDUCTION (F.R. COLUMN ), N ETWORK OPTIMIZATIONS (N.O.
+COLUMN ), AND SSF MODULE (SSF COLUMN ). T HE MAC S (G) COLUMN WAS COMPUTED USING AN IMAGE RESOLUTION OF 40962 . T HE M EMORY AND
+RUNTIME COLUMNS WERE COMPUTED USING A MOBILE DEVICE . B OLD VALUES MARK THE BEST RESULTS , AND UNDERLINE MARK THE SECOND BEST
+ONES .
+
+F.R.
+
+N.O.
+
+SSF
+
+✓
+✓
+✓
+
+✓
+✓
+
+✓
+
+Baseline
+
+MobileMEF
+
+MACs (G)
+88.93
+10.74
+8.94
+9.05
+
+Memory (MB)
+1710.02
+1125.29
+1100.66
+1156.23
+
+TABLE III
+A BLATION RESULTS FOR THE PROPOSED G RADIENT LOSS , LGrad .
+LGrad
+Default
+Proposed
+
+MS-SSIM
+0.8867
+0.9088
+
+SSIM
+0.8367
+0.8681
+
+PSNR
+18.9027
+21.3015
+
+Our complete network yields the best quality measures for
+all the full-reference metrics. Moreover, the proposed network
+optimizations reduced the number of required operations and
+the amount of memory usage, with a slight increase in
+runtime compared to the Baseline model with reduced filters.
+Specifically related to the SSF module, note that it slightly
+impacts the computational efforts, with a small increase of
+1.2% of MACs, 5% on memory usage, and 3.4% on runtime.
+Nevertheless, such a small increase is justified due to the
+consistent improvement in all the quantitative metrics, and also
+supported by manual inspection of the results (i.e., qualitative
+analysis).
+Crop-like Gradient Loss. The crop-like Gradient loss
+ablation results are presented in Tab. III. We observe an
+increase in all three full-reference metrics. Specifically, the
+MS-SSIM improves by 2.5%, the SSIM 3.8%, and the PSNR
+12.7%.
+Training Epochs. The results for the trained epochs ablation are presented in Tab. IV. We observe small differences
+among the model’s performance on different epoch checkpoints, supported by the small standard deviation values of
+the metrics. This finding serves as an indicative of the model’s
+
+Runtime (µs)
+5.63E+06
+1.49E+06
+1.72E+06
+1.82E+06
+
+MS-SSIM
+0.9087
+0.9083
+0.9069
+0.9088
+
+SSIM
+0.8532
+0.8612
+0.8591
+0.8681
+
+PSNR
+18.6070
+20.8147
+21.2006
+21.3015
+
+TABLE IV
+E POCHS ABLATION RESULTS . B OLD VALUES MARK THE BEST RESULTS ,
+AND UNDERLINE MARK THE SECOND BEST ONES . T HE FINAL ROWS
+CORRESPOND TO THE MEAN (MEAN) AND STANDARD DEVIATION (STD)
+VALUES , RESPECTIVELY.
+Epochs
+100
+200
+300
+400
+500
+MEAN
+STD
+
+SSIM
+0.8242
+0.8246
+0.8270
+0.8251
+0.8266
+0.8255
+0.0013
+
+MS-SSIM
+0.8931
+0.8926
+0.8937
+0.8952
+0.8962
+0.8942
+0.0015
+
+PSNR
+20.5245
+20.5374
+20.6532
+20.8056
+20.6528
+20.6347
+0.1135
+
+robustness for overfitting.
+VI. C ONCLUSIONS
+In this work, we introduced MobileMEF, a novel MEF
+method based on an Encoder-Decoder deep learning architecture optimized for fast and efficient image processing on
+mobile devices. Our extensive evaluations demonstrate that
+our method outperforms SOTA approaches in most tested
+full-reference quality measures and computational efficiency
+(runtime and memory usage), making it highly suitable for
+real-time applications on devices with limited resources, such
+as smartphones. Furthermore, our ablation studies confirmed
+the effectiveness of our architectural choices (i.e., the efficient
+building blocks and the SSF module), the crop-like Gradient
+loss proposal, and the robustness of our model across different
+training epochs. Finally, our work offers a robust solution for
+
+8
+
+(a) Inputs
+
+(b) HoLoCo
+
+(c) MEFLUT
+
+(d) MobileMEF
+
+(e) SAMT-MEF
+
+(f) IFCNN
+
+(g) TransMEF
+
+(h) Ground-truth
+
+(i) Inputs
+
+(j) HoLoCo
+
+(k) MEFLUT
+
+(l) MobileMEF
+
+(m) SAMT-MEF
+
+(n) IFCNN
+
+(o) TransMEF
+
+(p) Ground-truth
+
+(q) Inputs
+
+(r) HoLoCo
+
+(s) MEFLUT
+
+(t) MobileMEF
+
+(u) SAMT-MEF
+
+(v) IFCNN
+
+(w) TransMEF
+
+(x) Ground-truth
+
+Fig. 4. Visual comparison of MobileMEF with SOTA methods using EV +1 and -1 as input frames.
+
+MEF, balancing high image quality and low computational
+demands, thus paving the way for more efficient and effective
+HDR imaging on hardware-constrained applications. In future
+
+works, we intend to enhance the model’s adaptability to
+a wider range of input conditions to mitigate its current
+limitations.
+
+

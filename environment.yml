@@ -1,6 +1,7 @@
-name: anv
+name: env
 channels:
   - defaults
+  - conda-forge
 dependencies:
   - dav1d==1.2.1=hd590300_0
   - brotli-bin==1.0.9=h166bdaf_8
