@@ -43,8 +43,8 @@ def main():
     os.makedirs(output_folder, exist_ok=True)
     
     # Define image dimensions (ensure these match your model's expected input size)
-    HEIGHT = 2816
-    WIDTH = 4096
+    HEIGHT = 3552
+    WIDTH = 5312
     
     # Load the model
     model = get_model(shape=(HEIGHT, WIDTH), batch_size=1, resize_output=True)
@@ -68,39 +68,30 @@ def main():
         y_channels.append(y)
         uv_channels.append(uv)
     
-    # Stack Y and UV channels
-    # Assuming the model can handle five exposures by concatenating their channels
-    # This may require modifying the model architecture to accept more inputs
-    # Here, we concatenate along the channel axis
-    y_stack = np.concatenate(y_channels, axis=-1)  # Shape: (1, H, W, K)
-    uv_stack = np.concatenate(uv_channels, axis=-1)  # Shape: (1, H//4, W//4, K*2)
+    # Loop over all unique pairs of images (no repeats)
+    num_images = len(y_channels)
+    for i in range(num_images):
+        for j in range(i + 1, num_images):
+            # Prepare inputs for the model
+            y_low = y_channels[i]  # Image i
+            uv_low = uv_channels[i]
+            y_over = y_channels[j]  # Image j
+            uv_over = uv_channels[j]
+            
+            # Run inference
+            y_pred, uv_pred = model.predict([y_low, uv_low, y_over, uv_over])
+            
+            # Convert prediction to RGB
+            rgb_pred = convert_prediction(y_pred, uv_pred)
+            
+            # Resize the output to original image size if necessary
+            rgb_pred = cv2.resize(rgb_pred, (WIDTH, HEIGHT))
+            
+            # Save the fused image with a descriptive name
+            output_filename = f'fused_output_{i+1}_{j+1}.jpg'
+            output_path = os.path.join(output_folder, output_filename)
+            cv2.imwrite(output_path, rgb_pred)
+            print(f"Fused image saved at: {output_path}")
     
-    # Prepare inputs for the model
-    # The existing model expects four inputs: y_low, uv_low, y_med, uv_med
-    # To handle five exposures, you might need to modify the model to accept more inputs
-    # For demonstration, we'll select the most under and over-exposed images
-    # Alternatively, adapt the model to handle all five exposures
-    y_low = y_channels[0]  # Assuming '1.jpg' is the most under-exposed
-    uv_low = uv_channels[0]
-    y_over = y_channels[-1]  # Assuming '5.jpg' is the most over-exposed
-    uv_over = uv_channels[-1]
-    
-    # Load the weights into the model
-    model.load_weights(model_weights_path)
-    
-    # Run inference
-    y_pred, uv_pred = model.predict([y_low, uv_low, y_over, uv_over])
-    
-    # Convert prediction to RGB
-    rgb_pred = convert_prediction(y_pred, uv_pred)
-    
-    # Resize the output to original image size if necessary
-    rgb_pred = cv2.resize(rgb_pred, (WIDTH, HEIGHT))
-    
-    # Save the fused image
-    output_path = os.path.join(output_folder, 'fused_output.jpg')
-    cv2.imwrite(output_path, rgb_pred)
-    print(f"Fused image saved at: {output_path}")
-
 if __name__ == '__main__':
     main()
